@@ -7,8 +7,7 @@ import numpy as np
 import tensorflow as tf
 
 from keras.applications.inception_v3 import InceptionV3
-from keras.models import Sequential, Model # VGG19 uses functional API
-from keras.layers import Input
+from keras.models import Sequential
 from keras.layers.core import Dense, Dropout, Flatten, Lambda
 from keras.layers.convolutional import Conv2D, Cropping2D
 from keras.layers.pooling import MaxPooling2D, GlobalAveragePooling2D
@@ -24,7 +23,19 @@ FLAGS = tf.app.flags.FLAGS
 tf.app.flags.DEFINE_string(
     'data_dir',
     'data/',
-    "Directory containing driving_log.csv and IMG/*.jpg"
+    "directory containing driving_log.csv and IMG/*.jpg"
+)
+
+tf.app.flags.DEFINE_float(
+    'correction',
+    0.01,
+    "correction to be applied to center-steering on left and right images"
+)
+
+tf.app.flags.DEFINE_bool(
+    'include_sides',
+    False,
+    "determines whether the images taken from left/right sides are used"
 )
 
 def get_data():
@@ -36,82 +47,70 @@ def get_data():
             data.append(row)
     return data
 
-def generator(data, half_batch_size=64): # images are flipped
+def generator(data, half_batch_size=64): # filpped images are also included
     while True:
         random.shuffle(data)
         for first in range(0, len(data), half_batch_size):
             last = min(first + half_batch_size, len(data))
             center_images = []
+            left_images = []
+            right_images = []
             steering_measurements = []
             for c, l, r, steering, throttle, brake, speed in data[first:last]:
-                img = cv2.imread(os.path.join(FLAGS.data_dir, c))
-                center_images.append(img)
+                # strip is used to remove leading whitespace
+                img_c = cv2.imread(os.path.join(FLAGS.data_dir, c.strip()))
+                img_l = cv2.imread(os.path.join(FLAGS.data_dir, l.strip()))
+                img_r = cv2.imread(os.path.join(FLAGS.data_dir, r.strip()))
+                center_images.append(img_c)
+                left_images.append(img_l)
+                right_images.append(img_r)
+                steering = float(steering)
                 steering_measurements.append(steering)
-            center_images = np.array(center_images)
-            steering_measurements = np.array(
-                steering_measurements, dtype=np.float32
-            )
-            X_batch = np.concatenate((center_images, np.fliplr(center_images)))
+            images = np.array(center_images)
+            steering_measurements = np.array(steering_measurements)
+            if FLAGS.include_sides:
+                images = np.concatenate((
+                    images,
+                    np.array(left_images),
+                    np.array(right_images)
+                ))
+                steering_measurements = np.concatenate((
+                    steering_measurements,
+                    steering_measurements + FLAGS.correction,
+                    steering_measurements - FLAGS.correction
+                ))
+            X_batch = np.concatenate((images, np.fliplr(images)))
             y_batch = np.concatenate(
                 (steering_measurements, -steering_measurements)
             )
             yield X_batch, y_batch
 
-def inception(): # does not work well
-    inp = Input(shape=(160, 320, 3))
-    crop = Cropping2D(
-        cropping=((70, 30), (0, 0))
-    )(inp)
-    min_size = (139,139)
-    resized = Lambda(
-        lambda img: tf.image.resize_images(img, min_size)
-    )(crop)
-    inception = InceptionV3(
-        weights='imagenet',
-        include_top=False,
-        input_tensor=resized
-    )
-    for layer in inception.layers:
-        layer.trainable = False
-    x = inception.output
-    x = GlobalAveragePooling2D()(x)
-    x = Dense(256, activation="selu")(x)
-    x = Dropout(0.5)(x)
-    x = Dense(64, activation="selu")(x)
-    x = Dropout(0.5)(x)
-    x = Dense(16, activation="selu")(x)
-    x = Dropout(0.5)(x)
-    steering = Dense(1)(x) # -1.0 <= steering <= 1.0
-    model = Model(inputs=inp, outputs=steering)
-    return model
-
-def lenet():
+def get_model():
     model = Sequential()
     model.add(Cropping2D(
         cropping=((70, 30), (0, 0)),
         input_shape=(160, 320, 3)
     ))
     model.add(Lambda(lambda x: x/255.0 - 0.5))
-    model.add(Conv2D(6, 5, activation='selu'))
-    model.add(MaxPooling2D())
-    model.add(Conv2D(16, 5, activation='selu'))
-    model.add(MaxPooling2D())
+    model.add(Conv2D(filters=4,kernel_size=3,strides=(1,2),activation='relu'))
+    model.add(Dropout(0.2))
+    model.add(Conv2D(filters=4,kernel_size=3,strides=(1,2),activation='relu'))
+    model.add(Dropout(0.2))
+    model.add(Conv2D(filters=4,kernel_size=5,strides=(2,3),activation='relu'))
+    model.add(Dropout(0.2))
+    model.add(Conv2D(filters=4,kernel_size=5,strides=(2,2),activation='relu'))
+    model.add(Dropout(0.5))
     model.add(Flatten())
-    model.add(Dense(120, activation='selu'))
-    model.add(Dropout(0.5))
-    model.add(Dense(84, activation='selu'))
-    model.add(Dropout(0.5))
+    model.add(Dense(32, activation='relu'))
+    model.add(Dropout(0.1))
+    model.add(Dense(32, activation='relu'))
+    model.add(Dropout(0.1))
+    model.add(Dense(32, activation='relu'))
+    model.add(Dropout(0.1))
     model.add(Dense(1))
     return model
 
-def get_model():
-    #return inception()
-    return lenet()
-
 def main(_):
-    #TODO:
-    #1: add cropping
-    #2: deal with bottleneck separately
     data = get_data()
     random.shuffle(data)
     training_data = data[:int(0.8*len(data))]
@@ -125,25 +124,12 @@ def main(_):
     model.fit_generator(
         generator=train_gen,
         steps_per_epoch=int(np.ceil(len(training_data)/half_batch_size)),
-        epochs=5,
-        callbacks=[],
+        epochs=3,
+        callbacks=[], #TODO
         validation_data=valid_gen,
         validation_steps=int(np.ceil(len(validation_data)/half_batch_size)),
         verbose=1
     )
-    # Now that we have trained the final layers, we fine-tune the whole net.
-    for layer in model.layers:
-        layer.trainable = True
-    model.fit_generator(
-        generator=train_gen,
-        steps_per_epoch=int(np.ceil(len(training_data)/half_batch_size)),
-        epochs=5,
-        callbacks=[],
-        validation_data=valid_gen,
-        validation_steps=int(np.ceil(len(validation_data)/half_batch_size)),
-        verbose=1
-    )
-    model.save('model.h5', overwrite=True)
     model.save_weights('weights.h5', overwrite=True)
 
 if __name__ == '__main__':
