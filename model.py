@@ -8,8 +8,9 @@ import tensorflow as tf
 
 from keras.applications.inception_v3 import InceptionV3
 from keras.models import Sequential, Model # VGG19 uses functional API
-from keras.layers.core import Dense, Dropout, Flatten
-from keras.layers.convolutional import Conv2D
+from keras.layers import Input
+from keras.layers.core import Dense, Dropout, Flatten, Lambda
+from keras.layers.convolutional import Conv2D, Cropping2D
 from keras.layers.pooling import MaxPooling2D, GlobalAveragePooling2D
 
 from sklearn.model_selection import train_test_split
@@ -56,11 +57,19 @@ def generator(data, half_batch_size=64): # images are flipped
             )
             yield X_batch, y_batch
 
-def inception():
+def inception(): # does not work well
+    inp = Input(shape=(160, 320, 3))
+    crop = Cropping2D(
+        cropping=((70, 30), (0, 0))
+    )(inp)
+    min_size = (139,139)
+    resized = Lambda(
+        lambda img: tf.image.resize_images(img, min_size)
+    )(crop)
     inception = InceptionV3(
         weights='imagenet',
         include_top=False,
-        input_shape=(160, 320, 3)
+        input_tensor=resized
     )
     for layer in inception.layers:
         layer.trainable = False
@@ -73,20 +82,31 @@ def inception():
     x = Dense(16, activation="selu")(x)
     x = Dropout(0.5)(x)
     steering = Dense(1)(x) # -1.0 <= steering <= 1.0
-    model = Model(inputs=inception.input, outputs=steering)
+    model = Model(inputs=inp, outputs=steering)
     return model
 
 def lenet():
     model = Sequential()
-    model.add(Conv2D(6, 5, activation='relu', input_shape=(160, 320, 3)))
+    model.add(Cropping2D(
+        cropping=((70, 30), (0, 0)),
+        input_shape=(160, 320, 3)
+    ))
+    model.add(Lambda(lambda x: x/255.0 - 0.5))
+    model.add(Conv2D(6, 5, activation='selu'))
     model.add(MaxPooling2D())
-    model.add(Conv2D(16, 5, activation='relu'))
+    model.add(Conv2D(16, 5, activation='selu'))
     model.add(MaxPooling2D())
     model.add(Flatten())
-    model.add(Dense(120, activation='relu'))
-    model.add(Dense(84, activation='relu'))
+    model.add(Dense(120, activation='selu'))
+    model.add(Dropout(0.5))
+    model.add(Dense(84, activation='selu'))
+    model.add(Dropout(0.5))
     model.add(Dense(1))
     return model
+
+def get_model():
+    #return inception()
+    return lenet()
 
 def main(_):
     #TODO:
@@ -99,8 +119,8 @@ def main(_):
     half_batch_size=64
     train_gen = generator(training_data, half_batch_size)
     valid_gen = generator(validation_data, half_batch_size)
-    model = inception()
-    #model = lenet()
+    model = get_model()
+    print(model.summary())
     model.compile(loss='mse', optimizer='adam')
     model.fit_generator(
         generator=train_gen,
@@ -124,6 +144,7 @@ def main(_):
         verbose=1
     )
     model.save('model.h5', overwrite=True)
+    model.save_weights('weights.h5', overwrite=True)
 
 if __name__ == '__main__':
     tf.app.run()

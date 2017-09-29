@@ -14,9 +14,11 @@ from io import BytesIO
 
 os.environ["KERAS_BACKEND"] = "tensorflow"
 
-from keras.models import load_model
+#from keras.models import load_model
 import h5py
 from keras import __version__ as keras_version
+
+from model import get_model
 
 sio = socketio.Server()
 app = Flask(__name__)
@@ -121,7 +123,9 @@ if __name__ == '__main__':
         print('You are using Keras version ', keras_version,
               ', but the model was built using ', model_version)
 
-    model = load_model(args.model)
+    model = get_model()
+    model.load_weights(args.model)
+    #model = load_model(args.model)
 
     if args.image_folder != '':
         print("Creating image folder at {}".format(args.image_folder))
