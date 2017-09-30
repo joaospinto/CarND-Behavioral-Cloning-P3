@@ -30,7 +30,7 @@ tf.app.flags.DEFINE_float(
     'correction',
     0.015,
     "correction to be applied to center-steering on left and right images"
-)
+) #TODO: calibrate further
 
 tf.app.flags.DEFINE_bool(
     'include_sides',
@@ -162,11 +162,11 @@ def nvidia_net():
     return model
 
 def get_model():
+    #return commaai_net()
     #return nvidia_net()
     #TODO
     # 1: write test generator that uses only a few pictures
-    # 2: make use of side images
-    # 3: augmentation
+    # 2: augmentation
     model = Sequential()
     model.add(Cropping2D(
         cropping=((60, 30), (0, 0)),
