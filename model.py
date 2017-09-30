@@ -10,7 +10,7 @@ from keras.applications.inception_v3 import InceptionV3
 from keras.models import Sequential
 from keras.layers.core import Dense, Dropout, Flatten, Lambda
 from keras.layers.convolutional import Conv2D, Cropping2D
-from keras.layers.pooling import MaxPooling2D, GlobalAveragePooling2D
+from keras.layers.pooling import AveragePooling2D, MaxPooling2D
 
 from sklearn.model_selection import train_test_split
 from sklearn.utils import shuffle
@@ -28,17 +28,24 @@ tf.app.flags.DEFINE_string(
 
 tf.app.flags.DEFINE_float(
     'correction',
-    0.01,
+    0.015,
     "correction to be applied to center-steering on left and right images"
 )
 
 tf.app.flags.DEFINE_bool(
     'include_sides',
-    False,
+    True,
     "determines whether the images taken from left/right sides are used"
 )
 
+tf.app.flags.DEFINE_integer(
+    'epochs',
+    3,
+    "number of training epochs"
+)
+
 def get_data():
+    print("Loading data in directory {}...".format(FLAGS.data_dir))
     data = []
     with open(os.path.join(FLAGS.data_dir, "driving_log.csv"), 'r') as f:
         reader = csv.reader(f)
@@ -47,11 +54,11 @@ def get_data():
             data.append(row)
     return data
 
-def generator(data, half_batch_size=64): # filpped images are also included
+def generator(data, raw_batch_size=10):
     while True:
         random.shuffle(data)
-        for first in range(0, len(data), half_batch_size):
-            last = min(first + half_batch_size, len(data))
+        for first in range(0, len(data), raw_batch_size):
+            last = min(first + raw_batch_size, len(data))
             center_images = []
             left_images = []
             right_images = []
@@ -85,28 +92,110 @@ def generator(data, half_batch_size=64): # filpped images are also included
             )
             yield X_batch, y_batch
 
-def get_model():
+def commaai_net():
     model = Sequential()
     model.add(Cropping2D(
-        cropping=((70, 30), (0, 0)),
+        cropping=((60, 30), (0, 0)),
         input_shape=(160, 320, 3)
     ))
-    model.add(Lambda(lambda x: x/255.0 - 0.5))
-    model.add(Conv2D(filters=4,kernel_size=3,strides=(1,2),activation='relu'))
+    model.add(Lambda(lambda x: x/127.5 - 1.0))
+    model.add(Conv2D(filters=4,kernel_size=3,strides=(1,2),activation='elu'))
+    model.add(Conv2D(filters=4,kernel_size=3,strides=(1,2),activation='elu'))
+    model.add(Conv2D(filters=4,kernel_size=5,strides=(2,3),activation='elu'))
+    model.add(Flatten())
     model.add(Dropout(0.2))
-    model.add(Conv2D(filters=4,kernel_size=3,strides=(1,2),activation='relu'))
-    model.add(Dropout(0.2))
-    model.add(Conv2D(filters=4,kernel_size=5,strides=(2,3),activation='relu'))
-    model.add(Dropout(0.2))
-    model.add(Conv2D(filters=4,kernel_size=5,strides=(2,2),activation='relu'))
+    model.add(Dense(512, activation='elu'))
     model.add(Dropout(0.5))
+    model.add(Dense(1))
+    return model
+
+def nvidia_net():
+    # https://arxiv.org/pdf/1604.07316.pdf
+    model = Sequential()
+    model.add(Cropping2D(
+        cropping=((60, 30), (0, 0)),
+        input_shape=(160, 320, 3)
+    )) # shape (70,320,3)
+    model.add(Lambda(lambda img: tf.image.resize_images(img, (35, 160))))
+    model.add(Lambda(lambda x: x/127.5 - 1.0))
+    model.add(Conv2D(
+        filters=24,
+        kernel_size=5,
+        strides=(1,2), # paper uses (2,2) but our input dims are different
+        activation='relu',
+        padding="valid"
+    ))
+    model.add(Conv2D(
+        filters=36,
+        kernel_size=5,
+        strides=(2,2),
+        activation='relu',
+        padding="valid"
+    ))
+    model.add(Conv2D(
+        filters=48,
+        kernel_size=3,
+        strides=(2,2),
+        activation='relu',
+        padding="valid"
+    ))
+    model.add(Conv2D(
+        filters=64,
+        kernel_size=3,
+        strides=(2,2),
+        activation='relu',
+        padding="valid"
+    ))
+    model.add(Conv2D(
+        filters=64,
+        kernel_size=1,
+        strides=(2,2),
+        activation='relu',
+        padding="valid"
+    ))
+    model.add(Flatten())
+    model.add(Dense(1164, activation='relu'))
+    model.add(Dense(100, activation='relu'))
+    model.add(Dense(50, activation='relu'))
+    model.add(Dense(10, activation='relu'))
+    model.add(Dense(1))
+    return model
+
+def get_model():
+    #return nvidia_net()
+    #TODO
+    # 1: write test generator that uses only a few pictures
+    # 2: make use of side images
+    # 3: augmentation
+    model = Sequential()
+    model.add(Cropping2D(
+        cropping=((60, 30), (0, 0)),
+        input_shape=(160, 320, 3)
+    )) # shape (70,320,3)
+    model.add(Lambda(lambda img: tf.image.resize_images(img, (35, 160))))
+    model.add(Lambda(lambda x: x/127.5 - 1.0))
+    model.add(Conv2D(
+        filters=32,
+        kernel_size=5,
+        strides=(1,2),
+        activation='relu',
+        padding="valid"
+    ))
+    model.add(AveragePooling2D())
+    model.add(Conv2D(
+        filters=32,
+        kernel_size=5,
+        strides=(1,2),
+        activation='relu',
+        padding="same"
+    ))
+    model.add(AveragePooling2D())
+    #model.add(Dropout(0.2))
     model.add(Flatten())
     model.add(Dense(32, activation='relu'))
-    model.add(Dropout(0.1))
     model.add(Dense(32, activation='relu'))
-    model.add(Dropout(0.1))
     model.add(Dense(32, activation='relu'))
-    model.add(Dropout(0.1))
+    #model.add(Dropout(0.2))
     model.add(Dense(1))
     return model
 
@@ -115,19 +204,19 @@ def main(_):
     random.shuffle(data)
     training_data = data[:int(0.8*len(data))]
     validation_data = data[int(0.8*len(data)):]
-    half_batch_size=64
-    train_gen = generator(training_data, half_batch_size)
-    valid_gen = generator(validation_data, half_batch_size)
+    raw_batch_size = 10 # with flipping + side views, augmented b.s. is 60
+    train_gen = generator(training_data, raw_batch_size)
+    valid_gen = generator(validation_data, raw_batch_size)
     model = get_model()
     print(model.summary())
     model.compile(loss='mse', optimizer='adam')
     model.fit_generator(
         generator=train_gen,
-        steps_per_epoch=int(np.ceil(len(training_data)/half_batch_size)),
-        epochs=3,
+        steps_per_epoch=int(np.ceil(len(training_data)/raw_batch_size)),
+        epochs=FLAGS.epochs,
         callbacks=[], #TODO
         validation_data=valid_gen,
-        validation_steps=int(np.ceil(len(validation_data)/half_batch_size)),
+        validation_steps=int(np.ceil(len(validation_data)/raw_batch_size)),
         verbose=1
     )
     model.save_weights('weights.h5', overwrite=True)
