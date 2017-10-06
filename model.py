@@ -3,6 +3,10 @@ import random
 
 os.environ["KERAS_BACKEND"] = "tensorflow"
 
+with_gpu = True # not massive difference in speed, but faster with GPU
+if not with_gpu:
+    os.environ["CUDA_VISIBLE_DEVICES"] = ""
+
 import numpy as np
 import tensorflow as tf
 
