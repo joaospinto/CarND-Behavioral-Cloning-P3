@@ -48,6 +48,12 @@ tf.app.flags.DEFINE_bool(
     "determines whether the images taken from left/right sides are used"
 )
 
+tf.app.flags.DEFINE_bool(
+    'augment_data',
+    False,
+    "determines whether data augmentation is used"
+)
+
 tf.app.flags.DEFINE_integer(
     'epochs',
     3,
@@ -75,6 +81,14 @@ def get_data():
         for row in reader:
             data.append(row)
     return data
+
+def get_augmentation(images):
+    hsvs = np.array([cv2.cvtColor(img, cv2.COLOR_RGB2HSV) for img in images])
+    for i in range(hsvs.shape[0]):
+        hsv = (np.random.randint(low=0.5, high=1.5) * hsvs[i,:,:,2]).round()
+        hsv = np.minimum.reduce([hsv, 255*np.ones_like(hsv)]) # avoid overflow
+        hsvs[i,:,:,2] = hsv.astype(np.uint8)
+    return [cv2.cvtColor(hsv, cv2.COLOR_HSV2RGB) for hsv in hsvs]
 
 def generator(data):
     while True:
@@ -107,6 +121,13 @@ def generator(data):
                     steering_measurements,
                     steering_measurements + FLAGS.correction,
                     steering_measurements - FLAGS.correction
+                ))
+            if FLAGS.augment_data:
+                augmented = get_augmentation(images)
+                images = np.concatenate((images, augmented))
+                steering_measurements = np.concatenate((
+                    steering_measurements,
+                    steering_measurements
                 ))
             X_batch = np.concatenate((images, np.fliplr(images)))
             y_batch = np.concatenate(
@@ -183,13 +204,7 @@ def nvidia_net():
     model.add(Dense(1))
     return model
 
-def get_model():
-    #return commaai_net()
-    #return nvidia_net()
-    #TODO
-    # 1: write test generator that uses only a few pictures
-    # 2: augmentation
-    # 3: save model after each epoch (using ModelCheckpoint callback)
+def mod_lenet():
     model = Sequential()
     model.add(Cropping2D(
         cropping=((60, 30), (0, 0)),
@@ -220,6 +235,46 @@ def get_model():
     model.add(Dense(32, activation='relu'))
     model.add(Dense(1))
     return model
+
+def encoder_net():
+    model = Sequential()
+    model.add(Cropping2D(
+        cropping=((60, 30), (0, 0)),
+        input_shape=(160, 320, 3)
+    )) # shape (70,320,3)
+    model.add(Lambda(lambda img: tf.image.resize_images(img, (35, 160))))
+    model.add(Lambda(lambda x: x/127.5 - 1.0))
+    model.add(Dropout(0.2))
+    model.add(Conv2D(
+        filters=32,
+        kernel_size=5,
+        strides=(1,2),
+        activation='relu',
+        padding="valid"
+    ))
+    model.add(AveragePooling2D())
+    model.add(Conv2D(
+        filters=32,
+        kernel_size=5,
+        strides=(1,2),
+        activation='relu',
+        padding="same"
+    ))
+    model.add(AveragePooling2D())
+    model.add(Flatten())
+    model.add(Dense(16, activation='relu'))
+    model.add(Dense(4, activation='relu'))
+    model.add(Dense(16, activation='relu'))
+    model.add(Dense(16, activation='relu'))
+    model.add(Dense(16, activation='relu'))
+    model.add(Dense(1))
+    return model
+
+def get_model():
+    #return commaai_net()
+    #return nvidia_net()
+    #return mod_lenet()
+    return encoder_net()
 
 def main(_):
     data = get_data()
