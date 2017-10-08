@@ -11,7 +11,7 @@ import numpy as np
 import tensorflow as tf
 
 from keras.callbacks import ModelCheckpoint, TensorBoard
-from keras.models import Sequential
+from keras.models import Sequential, load_model
 from keras.layers.core import Dense, Dropout, Flatten, Lambda
 from keras.layers.convolutional import Conv2D, Cropping2D
 from keras.layers.pooling import AveragePooling2D, MaxPooling2D
@@ -31,9 +31,9 @@ tf.app.flags.DEFINE_string(
 )
 
 tf.app.flags.DEFINE_string(
-    'weights_file',
-    'weights.h5',
-    "file where model weights should be saved"
+    'model_file',
+    'model.h5',
+    "file where model should be saved"
 )
 
 tf.app.flags.DEFINE_float(
@@ -69,7 +69,7 @@ tf.app.flags.DEFINE_integer(
 tf.app.flags.DEFINE_bool(
     'reset',
     True,
-    "If False, previous weights will be loaded at the start."
+    "If False, previous model will be loaded at the start."
 )
 
 def get_data():
@@ -284,16 +284,16 @@ def main(_):
     train_gen = generator(training_data)
     valid_gen = generator(validation_data)
     model = get_model()
-    print(model.summary())
     if not FLAGS.reset:
-        model.load_weights(FLAGS.weights_file)
+        model = load_model(FLAGS.model_file)
+    print(model.summary())
     model.compile(loss='mse', optimizer='adam')
     model.fit_generator(
         generator=train_gen,
         steps_per_epoch=int(np.ceil(len(training_data)/FLAGS.raw_batch_size)),
         epochs=FLAGS.epochs,
         callbacks=[
-            ModelCheckpoint(FLAGS.weights_file, save_weights_only=True),
+            ModelCheckpoint(FLAGS.model_file),
             TensorBoard(
                 write_images=True,
                 batch_size=FLAGS.raw_batch_size
