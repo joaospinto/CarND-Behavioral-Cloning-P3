@@ -102,8 +102,11 @@ def generator(data):
             for c, l, r, steering, throttle, brake, speed in data[first:last]:
                 # strip is used to remove leading whitespace
                 img_c = cv2.imread(os.path.join(FLAGS.data_dir, c.strip()))
+                img_c = cv2.cvtColor(img_c, cv2.COLOR_BGR2RGB)
                 img_l = cv2.imread(os.path.join(FLAGS.data_dir, l.strip()))
+                img_l = cv2.cvtColor(img_l, cv2.COLOR_BGR2RGB)
                 img_r = cv2.imread(os.path.join(FLAGS.data_dir, r.strip()))
+                img_r = cv2.cvtColor(img_r, cv2.COLOR_BGR2RGB)
                 center_images.append(img_c)
                 left_images.append(img_l)
                 right_images.append(img_r)
