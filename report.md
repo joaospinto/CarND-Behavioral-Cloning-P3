@@ -11,11 +11,18 @@ Udacity provided a training set that should suffice for getting a working steeri
 Moreover, the amount of data provided is pretty small. Therefore, I chose to collect more training data, using my mouse to drive the car (and avoid the sparseness problem mentioned above). From a utilitarian perspective, it was definitely a better use of my time to record a good training set as opposed to stick do a smaller training set and to iterate more times on other fronts (e.g. network architecture). Almost `3GB` worth of data were collected; my dataset is available [here](https://drive.google.com/open?id=0BzHXlT0zHqM9Rm5mdk45Sm9WWms). I shared it on the Slack
 channel `#p-behavioral-cloning` (I give permission for Udacity to share it at will, but I would suggest correcting the directories in `driving_log.csv`; somehow the simulator records absolute directories, not relative ones, which is rather silly). The data collected includes many laps, both clockwise and counter-clockwise, all of which corresponding to track 1. In most laps, I tried to make the car stay as close to the center as possible, but I did include a few examples of "saves"; this was
 probably not necessary, since naturally I don't stay perfectly centered in the track, and there is always some amount of error-correction going on in all laps.
+A few examples of collected images may be found below.
+![left](report_images/left_2017_10_05_11_20_13_397.jpg)
+![center](report_images/center_2017_10_05_11_20_52_067.jpg)
+![right](report_images/right_2017_09_29_15_32_56_300.jpg)
 
 ## Training pipeline
 The model `model.h5` was trained for `3` epochs. At each epoch, we shuffle the rows of our in-memory copy of `driving_log.csv`, and iterate through them in batches. A generator is used to ensure that the number of images that are loaded in-memory is equal to the batch size. Images are loaded with `cv2.imread` and converted from BGR to RGB with `cv2.cvtColor`; it should probably be made clear on the project statement which format the network should accept as input. It took me a while to figure out that I was feeding the channels in the wrong order (BGR in training, RGB when testing on the
 simulator); after reading through the Slack channel, other people had exactly the same issue, and their car was crashing precisely in the same location (after crossing the bridge, it fails to complete a left-turn). Images from the left- and right-view of the car were also used in the training set; we used a correction of `0.025` in the steering angle. Images were also always horizontally flipped (negating the corresponding steering angle, of course), to remove any bias to drive
 excessively to one of the sides. An Adam optimizer was used.
+
+## Preventing overfitting
+As described below, I used a dropout layer to prevent overfitting. I chose not to divide the collected dataset into training/validation/test subsets, since I had a much more effective testing method at my disposal: running the simulator on autonomous mode, which is effectively equivalent to a testing set (except that the metric is more qualitative than quantitative).
 
 ## Augmentation
 The only form of augmentation we used was to add random amounts of noise on the luminance component of the images; for this, an HSV decomposition was used.
