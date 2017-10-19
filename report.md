@@ -12,6 +12,7 @@ Moreover, the amount of data provided is pretty small. Therefore, I chose to col
 channel `#p-behavioral-cloning` (I give permission for Udacity to share it at will, but I would suggest correcting the directories in `driving_log.csv`; somehow the simulator records absolute directories, not relative ones, which is rather silly). The data collected includes many laps, both clockwise and counter-clockwise, all of which corresponding to track 1. In most laps, I tried to make the car stay as close to the center as possible, but I did include a few examples of "saves"; this was
 probably not necessary, since naturally I don't stay perfectly centered in the track, and there is always some amount of error-correction going on in all laps.
 A few examples of collected images may be found below.
+
 ![left](report_images/left_2017_10_05_11_20_13_397.jpg)
 ![center](report_images/center_2017_10_05_11_20_52_067.jpg)
 ![right](report_images/right_2017_09_29_15_32_56_300.jpg)
