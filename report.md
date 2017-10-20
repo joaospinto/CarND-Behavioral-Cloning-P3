@@ -39,4 +39,4 @@ by trial-and-error (not much in the way of intuition there), but the bottleneck 
 With the purpose of allowing lambda layers to be used in our model, we changed `drive.py` to load the model from its definition in `model.py`, and only loading the weights from `model.h5`.
 
 ## Conclusion
-The network we trained runs very comfortably on track 1. Due to time constraints, I have not used track 2 at all, but as soon as I have some time in my hands (probably once all the deadlines of Term 1 are over) I will collect some data for track 2 and try out my model there.
+The network we trained runs very comfortably on track 1. Due to time constraints, I have not used track 2 at all, but as soon as I have some time in my hands (probably once all the deadlines of Term 1 are over) I will collect some data for track 2 and try out my model there. A recorded run on track 1 can be found [here](https://youtu.be/pi8hGzjxwAE).
